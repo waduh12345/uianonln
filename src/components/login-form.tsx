@@ -110,7 +110,7 @@ export default function LoginForm() {
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="border-2 border-dashed border-neutral-300 dark:border-neutral-700 p-12 rounded-lg">
             <Image
-              src="/logo-stikes.jpg"
+              src="/bg-login.png"
               alt="Ujian Online"
               width={400}
               height={400}
