@@ -21,8 +21,15 @@ export const testExportApi = apiSlice.injectEndpoints({
       }),
       transformResponse: (res: ExportTestResponse) => res,
     }),
+    exportTestQuestions: builder.mutation<ExportTestResponse, ExportTestPayload>({
+      query: (body) => ({
+        url: `/test/export/questions/${body.test_id}`,
+        method: "POST",
+      }),
+      transformResponse: (res: ExportTestResponse) => res,
+    }),
   }),
   overrideExisting: false,
 });
 
-export const { useExportTestMutation } = testExportApi;
+export const { useExportTestMutation, useExportTestQuestionsMutation } = testExportApi;

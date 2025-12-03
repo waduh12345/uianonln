@@ -12,7 +12,7 @@ import {
   useUpdateTestMutation,
   useDeleteTestMutation,
 } from "@/services/tryout/test.service";
-import { useExportTestMutation } from "@/services/tryout/export-test.service";
+import { useExportTestMutation, useExportTestQuestionsMutation } from "@/services/tryout/export-test.service";
 import { useGetSchoolListQuery } from "@/services/master/school.service";
 import { useGetUsersListQuery } from "@/services/users-management.service";
 import { useGetMeQuery } from "@/services/auth.service";
@@ -118,101 +118,157 @@ function dateOnly(input?: string | null): string {
   return `${y}-${m}-${day}`;
 }
 
-const generateDummyPdf = (testTitle: string, schoolName: string) => {
-  // 1. Setup Data Dummy yang Rapih
-  const dummyQuestions = Array.from({ length: 20 }).map((_, i) => ({
-    no: i + 1,
-    text: `Soal Nomor ${i + 1}. Diketahui sebuah segitiga siku-siku dengan panjang alas 3 cm dan tinggi 4 cm. Berapakah panjang sisi miringnya? (Ini adalah contoh teks soal yang cukup panjang untuk mengetes wrapping text pada PDF).`,
-    options: [
-      { key: "A", text: "5 cm" },
-      { key: "B", text: "7 cm" },
-      { key: "C", text: "12 cm" },
-      { key: "D", text: "25 cm" },
-      { key: "E", text: "10 cm" },
-    ],
-    correct: "A",
-  }));
+// ... imports
 
-  // 2. Inisialisasi jsPDF (A4, Portrait, mm)
+// --- TYPES FOR EXPORT RESPONSE ---
+interface ExportOption {
+  option: string; // "a", "b", etc
+  text: string;
+  point: number;
+}
+
+interface ExportQuestionDetail {
+  id: number;
+  question: string;
+  type: string;
+  answer: string; // "a", "b", etc
+  options: ExportOption[];
+}
+
+interface ExportQuestionWrapper {
+  id: number;
+  question: ExportQuestionDetail;
+}
+
+interface ExportCategory {
+  id: number;
+  question_category: {
+    name: string;
+  };
+  questions: ExportQuestionWrapper[];
+}
+
+interface ExportData {
+  test: {
+    title: string;
+    sub_title: string | null;
+    school_id: number;
+  };
+  question_categories: ExportCategory[];
+}
+// ---------------------------------
+
+const generateRealPdf = (data: ExportData, schoolName: string) => {
+  const { test, question_categories } = data;
+  
+  // 1. Inisialisasi jsPDF
   const doc = new jsPDF("p", "mm", "a4");
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 15;
   const maxLineWidth = pageWidth - margin * 2;
   
-  let yPos = 20; // Posisi vertikal awal
+  let yPos = 20;
 
   // --- HEADER ---
-  doc.setFontSize(16);
+  doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
   doc.text("DOKUMEN SOAL & KUNCI JAWABAN", pageWidth / 2, yPos, { align: "center" });
   
-  yPos += 8;
+  yPos += 7;
   doc.setFontSize(12);
-  doc.setFont("helvetica", "normal");
-  doc.text(testTitle, pageWidth / 2, yPos, { align: "center" });
+  doc.text(test.title || "Ujian", pageWidth / 2, yPos, { align: "center" });
+
+  if (test.sub_title) {
+    yPos += 6;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(test.sub_title, pageWidth / 2, yPos, { align: "center" });
+  }
   
   yPos += 6;
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setTextColor(100);
-  doc.text(`Institusi: ${schoolName} | Tanggal Cetak: ${new Date().toLocaleDateString("id-ID")}`, pageWidth / 2, yPos, { align: "center" });
-  doc.setTextColor(0); // Reset warna hitam
+  doc.text(`Institusi: ${schoolName} | Tgl Cetak: ${new Date().toLocaleDateString("id-ID")}`, pageWidth / 2, yPos, { align: "center" });
+  doc.setTextColor(0);
 
-  yPos += 5;
+  yPos += 4;
   doc.setLineWidth(0.5);
-  doc.line(margin, yPos, pageWidth - margin, yPos); // Garis pembatas header
+  doc.line(margin, yPos, pageWidth - margin, yPos);
   
   yPos += 10;
 
   // --- CONTENT LOOP ---
-  doc.setFontSize(10);
+  let globalNo = 1;
 
-  dummyQuestions.forEach((q) => {
-    // Cek apakah halaman sudah penuh?
-    if (yPos > pageHeight - 30) {
-      doc.addPage();
-      yPos = 20; // Reset ke atas halaman baru
+  // Loop setiap kategori soal
+  question_categories.forEach((cat) => {
+    // Cek space untuk judul kategori
+    if (yPos > pageHeight - 30) { doc.addPage(); yPos = 20; }
+
+    // Render Judul Kategori (Opsional, jika ingin dipisah per kategori)
+    if (cat.question_category?.name) {
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Kategori: ${cat.question_category.name}`, margin, yPos);
+      yPos += 8;
     }
 
-    // Render Teks Soal
-    doc.setFont("helvetica", "bold");
-    doc.text(`${q.no}.`, margin, yPos);
-    
-    doc.setFont("helvetica", "normal");
-    const splitText = doc.splitTextToSize(q.text, maxLineWidth - 10); // indent sedikit
-    doc.text(splitText, margin + 8, yPos);
-    
-    // Hitung tinggi teks soal untuk update yPos
-    const textHeight = splitText.length * 5; 
-    yPos += textHeight + 2;
+    // Loop setiap pertanyaan dalam kategori
+    cat.questions.forEach((qWrapper) => {
+      const q = qWrapper.question;
 
-    // Render Pilihan Jawaban
-    q.options.forEach((opt) => {
-        if (yPos > pageHeight - 20) { doc.addPage(); yPos = 20; } // Cek page break saat opsi
+      // Cek apakah halaman cukup untuk soal + opsi (estimasi kasar)
+      if (yPos > pageHeight - 40) { doc.addPage(); yPos = 20; }
+
+      // 1. Render Teks Soal
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text(`${globalNo}.`, margin, yPos); // Nomor soal
+      
+      doc.setFont("helvetica", "normal");
+      // Membersihkan tag HTML sederhana jika ada (misal <p>)
+      const cleanQuestionText = q.question.replace(/<[^>]+>/g, ''); 
+      const splitText = doc.splitTextToSize(cleanQuestionText, maxLineWidth - 10);
+      doc.text(splitText, margin + 8, yPos);
+      
+      yPos += (splitText.length * 5) + 2;
+
+      // 2. Render Pilihan Jawaban
+      q.options.forEach((opt) => {
+        // Cek page break di tengah opsi
+        if (yPos > pageHeight - 15) { doc.addPage(); yPos = 20; }
         
-        // Tandai kunci jawaban dengan bold atau warna
-        const isCorrect = opt.key === q.correct;
-        if(isCorrect) doc.setFont("helvetica", "bold");
+        const isCorrect = opt.option.toLowerCase() === q.answer.toLowerCase();
         
-        doc.text(`${opt.key}. ${opt.text}`, margin + 12, yPos);
+        // Logic styling jawaban benar
+        if(isCorrect) {
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(0, 150, 0); // Hijau untuk jawaban benar
+        } else {
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(0);
+        }
         
-        if(isCorrect) doc.setFont("helvetica", "normal"); // Balikin normal
+        const optText = `${opt.option.toUpperCase()}. ${opt.text}`;
+        // Wrap text opsi jika terlalu panjang
+        const splitOpt = doc.splitTextToSize(optText, maxLineWidth - 15);
+        doc.text(splitOpt, margin + 12, yPos);
         
-        yPos += 5;
+        yPos += (splitOpt.length * 5) + 1;
+      });
+
+      // Reset warna ke hitam
+      doc.setTextColor(0);
+      doc.setFont("helvetica", "normal");
+      yPos += 6; // Spasi antar soal
+      globalNo++;
     });
 
-    // Render Kunci Jawaban Explicit (Opsional, agar lebih jelas)
-    if (yPos > pageHeight - 20) { doc.addPage(); yPos = 20; }
-    doc.setFont("courier", "bold");
-    doc.setTextColor(0, 100, 0); // Warna Hijau Gelap
-    doc.text(`[ Kunci Jawaban: ${q.correct} ]`, margin + 12, yPos);
-    doc.setTextColor(0); // Reset Hitam
-    doc.setFont("helvetica", "normal");
-
-    yPos += 10; // Spasi antar nomor
+    yPos += 5; // Spasi antar kategori
   });
 
-  // Footer Page Number (Simple)
+  // Footer Page Number
   const pageCount = doc.getNumberOfPages();
   for(let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
@@ -220,8 +276,8 @@ const generateDummyPdf = (testTitle: string, schoolName: string) => {
     doc.text(`Halaman ${i} dari ${pageCount}`, pageWidth - margin, pageHeight - 10, {align:'right'});
   }
 
-  // 3. Simpan File
-  const safeName = testTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  // Simpan File
+  const safeName = test.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
   doc.save(`soal_${safeName}.pdf`);
 };
 
@@ -283,6 +339,7 @@ export default function TryoutPage() {
   const [updateTest, { isLoading: updating }] = useUpdateTestMutation();
   const [deleteTest] = useDeleteTestMutation();
   const [exportTest] = useExportTestMutation();
+  const [exportTestQuestions] = useExportTestQuestionsMutation();
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TestRow | null>(null);
@@ -444,27 +501,33 @@ export default function TryoutPage() {
   };
 
   const onExportPdf = async (id: number) => {
-    // Cari data test berdasarkan ID untuk keperluan Nama File/Header dummy
+    // Cari data test di tabel hanya untuk mendapatkan nama sekolah (karena di API export detail sekolahnya minim)
     const selectedTest = tableRows.find((t) => t.id === id);
-    const title = selectedTest?.title || "Ujian Tanpa Judul";
-    const school = selectedTest?.school_name || "Sekolah Umum";
+    const schoolName = selectedTest?.school_name || "Sekolah Umum";
 
     try {
       setExportingId(id);
+      // Panggil API
+      const res = await exportTestQuestions({ test_id: id }).unwrap();
       
-      // Simulasi loading network
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      
-      // Generate PDF menggunakan dummy data
-      generateDummyPdf(title, school);
+      // Validasi data sebelum generate
+      if (res?.data) {
+         // CASTING ke tipe ExportData agar TypeScript senang
+         const exportData = res.data as unknown as ExportData;
+         
+         // Generate PDF dengan data REAL
+         generateRealPdf(exportData, schoolName);
 
-      await Swal.fire({
-        icon: "success",
-        title: "Download Berhasil",
-        text: "File PDF telah berhasil di-generate.",
-        timer: 2000,
-        showConfirmButton: false
-      });
+         await Swal.fire({
+            icon: "success",
+            title: "Download Berhasil",
+            text: "File PDF telah berhasil di-generate.",
+            timer: 2000,
+            showConfirmButton: false
+         });
+      } else {
+        throw new Error("Data soal tidak ditemukan");
+      }
 
     } catch (e) {
       await Swal.fire({
