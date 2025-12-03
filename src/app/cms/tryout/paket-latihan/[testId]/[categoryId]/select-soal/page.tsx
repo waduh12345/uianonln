@@ -54,6 +54,8 @@ export default function SelectSoalPage() {
     paginate,
     search,
     question_category_id: questionCategoryId || undefined,
+    orderBy: "questions.updated_at",
+    order: "asc",
   });
 
   const [selected, setSelected] = useState<Record<number, boolean>>({});

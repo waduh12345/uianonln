@@ -77,6 +77,8 @@ export interface GetQuestionListArgs {
   searchBySpecific?: string;
   /** filter langsung by category id (sesuai lampiran) */
   question_category_id?: number;
+  orderBy?: string;
+  order?: "asc" | "desc";
 }
 
 /** ===== Import/Export (Questions) ===== */
@@ -115,6 +117,8 @@ export const questionsApi = apiSlice.injectEndpoints({
         search,
         searchBySpecific,
         question_category_id,
+        orderBy,
+        order,
       }) => {
         const qs = new URLSearchParams();
         qs.set("page", String(page));
@@ -126,6 +130,10 @@ export const questionsApi = apiSlice.injectEndpoints({
         }
         if (typeof question_category_id !== "undefined") {
           qs.set("question_category_id", String(question_category_id));
+        }
+        if (orderBy && orderBy.trim()) qs.set("orderBy", orderBy.trim());
+        if (order && (order === "asc" || order === "desc")) {
+          qs.set("order", order);
         }
 
         return {

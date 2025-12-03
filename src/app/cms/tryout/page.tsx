@@ -3,6 +3,9 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import Swal from "sweetalert2";
+
+import { jsPDF } from "jspdf";
+
 import {
   useGetTestListQuery,
   useCreateTestMutation,
@@ -114,6 +117,113 @@ function dateOnly(input?: string | null): string {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
+
+const generateDummyPdf = (testTitle: string, schoolName: string) => {
+  // 1. Setup Data Dummy yang Rapih
+  const dummyQuestions = Array.from({ length: 20 }).map((_, i) => ({
+    no: i + 1,
+    text: `Soal Nomor ${i + 1}. Diketahui sebuah segitiga siku-siku dengan panjang alas 3 cm dan tinggi 4 cm. Berapakah panjang sisi miringnya? (Ini adalah contoh teks soal yang cukup panjang untuk mengetes wrapping text pada PDF).`,
+    options: [
+      { key: "A", text: "5 cm" },
+      { key: "B", text: "7 cm" },
+      { key: "C", text: "12 cm" },
+      { key: "D", text: "25 cm" },
+      { key: "E", text: "10 cm" },
+    ],
+    correct: "A",
+  }));
+
+  // 2. Inisialisasi jsPDF (A4, Portrait, mm)
+  const doc = new jsPDF("p", "mm", "a4");
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 15;
+  const maxLineWidth = pageWidth - margin * 2;
+  
+  let yPos = 20; // Posisi vertikal awal
+
+  // --- HEADER ---
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.text("DOKUMEN SOAL & KUNCI JAWABAN", pageWidth / 2, yPos, { align: "center" });
+  
+  yPos += 8;
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "normal");
+  doc.text(testTitle, pageWidth / 2, yPos, { align: "center" });
+  
+  yPos += 6;
+  doc.setFontSize(10);
+  doc.setTextColor(100);
+  doc.text(`Institusi: ${schoolName} | Tanggal Cetak: ${new Date().toLocaleDateString("id-ID")}`, pageWidth / 2, yPos, { align: "center" });
+  doc.setTextColor(0); // Reset warna hitam
+
+  yPos += 5;
+  doc.setLineWidth(0.5);
+  doc.line(margin, yPos, pageWidth - margin, yPos); // Garis pembatas header
+  
+  yPos += 10;
+
+  // --- CONTENT LOOP ---
+  doc.setFontSize(10);
+
+  dummyQuestions.forEach((q) => {
+    // Cek apakah halaman sudah penuh?
+    if (yPos > pageHeight - 30) {
+      doc.addPage();
+      yPos = 20; // Reset ke atas halaman baru
+    }
+
+    // Render Teks Soal
+    doc.setFont("helvetica", "bold");
+    doc.text(`${q.no}.`, margin, yPos);
+    
+    doc.setFont("helvetica", "normal");
+    const splitText = doc.splitTextToSize(q.text, maxLineWidth - 10); // indent sedikit
+    doc.text(splitText, margin + 8, yPos);
+    
+    // Hitung tinggi teks soal untuk update yPos
+    const textHeight = splitText.length * 5; 
+    yPos += textHeight + 2;
+
+    // Render Pilihan Jawaban
+    q.options.forEach((opt) => {
+        if (yPos > pageHeight - 20) { doc.addPage(); yPos = 20; } // Cek page break saat opsi
+        
+        // Tandai kunci jawaban dengan bold atau warna
+        const isCorrect = opt.key === q.correct;
+        if(isCorrect) doc.setFont("helvetica", "bold");
+        
+        doc.text(`${opt.key}. ${opt.text}`, margin + 12, yPos);
+        
+        if(isCorrect) doc.setFont("helvetica", "normal"); // Balikin normal
+        
+        yPos += 5;
+    });
+
+    // Render Kunci Jawaban Explicit (Opsional, agar lebih jelas)
+    if (yPos > pageHeight - 20) { doc.addPage(); yPos = 20; }
+    doc.setFont("courier", "bold");
+    doc.setTextColor(0, 100, 0); // Warna Hijau Gelap
+    doc.text(`[ Kunci Jawaban: ${q.correct} ]`, margin + 12, yPos);
+    doc.setTextColor(0); // Reset Hitam
+    doc.setFont("helvetica", "normal");
+
+    yPos += 10; // Spasi antar nomor
+  });
+
+  // Footer Page Number (Simple)
+  const pageCount = doc.getNumberOfPages();
+  for(let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.text(`Halaman ${i} dari ${pageCount}`, pageWidth - margin, pageHeight - 10, {align:'right'});
+  }
+
+  // 3. Simpan File
+  const safeName = testTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  doc.save(`soal_${safeName}.pdf`);
+};
 
 export default function TryoutPage() {
   const [page, setPage] = useState(1);
@@ -333,6 +443,40 @@ export default function TryoutPage() {
     }
   };
 
+  const onExportPdf = async (id: number) => {
+    // Cari data test berdasarkan ID untuk keperluan Nama File/Header dummy
+    const selectedTest = tableRows.find((t) => t.id === id);
+    const title = selectedTest?.title || "Ujian Tanpa Judul";
+    const school = selectedTest?.school_name || "Sekolah Umum";
+
+    try {
+      setExportingId(id);
+      
+      // Simulasi loading network
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      
+      // Generate PDF menggunakan dummy data
+      generateDummyPdf(title, school);
+
+      await Swal.fire({
+        icon: "success",
+        title: "Download Berhasil",
+        text: "File PDF telah berhasil di-generate.",
+        timer: 2000,
+        showConfirmButton: false
+      });
+
+    } catch (e) {
+      await Swal.fire({
+        icon: "error",
+        title: "Export gagal",
+        text: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setExportingId(null);
+    }
+  };
+
   const tableRows: TestRow[] = useMemo(
     () => (data?.data as TestRow[]) ?? [],
     [data]
@@ -536,6 +680,14 @@ export default function TryoutPage() {
                               <ActionIcon
                                 label="Export"
                                 onClick={() => onExport(t.id)}
+                                disabled={exportingId === t.id}
+                              >
+                                <FileDown className="h-4 w-4" />
+                              </ActionIcon>
+
+                              <ActionIcon
+                                label="Download PDF"
+                                onClick={() => onExportPdf(t.id)}
                                 disabled={exportingId === t.id}
                               >
                                 <FileDown className="h-4 w-4" />

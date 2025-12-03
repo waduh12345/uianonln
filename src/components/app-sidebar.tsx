@@ -186,12 +186,12 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             >
               <a href="#">
                 <Image
-                  src="/try-out-virtual.webp"
+                  src="/logo-stikes.jpg"
                   alt="Ujian Online"
                   width={32}
                   height={32}
                 />
-                <span className="text-base font-bold">Ujian Online</span>
+                <span className="text-base font-bold">Aplikasi Ujian Online</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>
