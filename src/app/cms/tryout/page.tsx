@@ -163,7 +163,7 @@ const htmlToText = (html: string) => {
 
   // 1. Ganti tag block-level umum dengan baris baru (\n)
   // Agar struktur paragraf tidak hilang saat tag di-strip
-  let formattedHtml = html
+  const formattedHtml = html
     .replace(/<br\s*\/?>/gi, "\n")       // <br> jadi enter
     .replace(/<\/p>/gi, "\n\n")          // </p> jadi double enter
     .replace(/<\/div>/gi, "\n")          // </div> jadi enter
