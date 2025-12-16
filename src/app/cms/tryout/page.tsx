@@ -158,6 +158,31 @@ interface ExportData {
 }
 // ---------------------------------
 
+const htmlToText = (html: string) => {
+  if (!html) return "";
+
+  // 1. Ganti tag block-level umum dengan baris baru (\n)
+  // Agar struktur paragraf tidak hilang saat tag di-strip
+  let formattedHtml = html
+    .replace(/<br\s*\/?>/gi, "\n")       // <br> jadi enter
+    .replace(/<\/p>/gi, "\n\n")          // </p> jadi double enter
+    .replace(/<\/div>/gi, "\n")          // </div> jadi enter
+    .replace(/<\/li>/gi, "\n- ");        // </li> jadi enter + dash (untuk list)
+
+  // 2. Gunakan DOM Parser browser untuk membersihkan sisa tag & entities (&nbsp;, dll)
+  const tempDiv = document.createElement("div");
+  tempDiv.innerHTML = formattedHtml;
+
+  // 3. Ambil text content
+  let text = tempDiv.textContent || tempDiv.innerText || "";
+
+  // 4. Bersihkan spasi berlebih (optional, agar lebih rapi)
+  // Mengubah multiple spaces menjadi satu spasi, tapi menjaga newline
+  text = text.replace(/ +/g, ' ').trim(); 
+  
+  return text;
+};
+
 const generateRealPdf = (data: ExportData, schoolName: string) => {
   const { test, question_categories } = data;
   
@@ -228,7 +253,8 @@ const generateRealPdf = (data: ExportData, schoolName: string) => {
       
       doc.setFont("helvetica", "normal");
       // Membersihkan tag HTML sederhana jika ada (misal <p>)
-      const cleanQuestionText = q.question.replace(/<[^>]+>/g, ''); 
+      // const cleanQuestionText = q.question.replace(/<[^>]+>/g, ''); 
+      const cleanQuestionText = htmlToText(q.question);
       const splitText = doc.splitTextToSize(cleanQuestionText, maxLineWidth - 10);
       doc.text(splitText, margin + 8, yPos);
       
