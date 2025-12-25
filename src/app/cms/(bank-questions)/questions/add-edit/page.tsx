@@ -31,7 +31,7 @@ export default function AddEditQuestionsPage() {
       skip: !questionId,
       // 🆕 pastikan ambil data fresh saat masuk halaman edit
       refetchOnMountOrArgChange: true,
-      refetchOnFocus: true,
+      refetchOnFocus: false,
     });
 
   const loading = loadingCat || (!!questionId && loadingQuestion);
@@ -57,11 +57,11 @@ export default function AddEditQuestionsPage() {
               </div>
             ) : (
               <QuestionsForm
+                key={questionId ?? "new"}
                 categories={categories}
                 initial={initial ?? null}
                 defaultCategoryId={defaultCategoryId}
                 onSaved={(saved) => {
-                  // kembali ke list, pertahankan category via query param
                   router.push(
                     `/cms/questions?category_id=${saved.question_category_id}`
                   );
