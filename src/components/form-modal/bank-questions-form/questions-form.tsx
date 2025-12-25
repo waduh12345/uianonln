@@ -40,7 +40,10 @@ const SunEditor = dynamic(() => import("suneditor-react"), { ssr: false });
 
 const extractUrlFromResponse = (res: unknown): string => {
   // 1. PERBAIKAN: Cek jika 'res' itu sendiri adalah string URL
-  if (typeof res === "string" && (res.startsWith("http") || res.startsWith("/"))) {
+  if (
+    typeof res === "string" &&
+    (res.startsWith("http") || res.startsWith("/"))
+  ) {
     return res;
   }
 
@@ -78,6 +81,40 @@ type Props = {
   onSaved?: (saved: Questions) => void;
   submittingText?: string;
 };
+
+const DEFAULT_OPTIONS_MC: MCOption[] = [
+  { option: "a", text: "", point: 0 },
+  { option: "b", text: "", point: 0 },
+  { option: "c", text: "", point: 0 },
+  { option: "d", text: "", point: 0 },
+  { option: "e", text: "", point: 0 },
+];
+
+const DEFAULT_OPTIONS_TF: MCOption[] = [
+  { option: "a", text: "True", point: 1 },
+  { option: "b", text: "False", point: 0 },
+];
+
+const DEFAULT_OPTIONS_MULTI: MCOption[] = [
+  { option: "a", text: "", point: 0 },
+  { option: "b", text: "", point: 0 },
+  { option: "c", text: "", point: 0 },
+];
+
+const DEFAULT_OPTIONS_CATEGORIZED: CategorizedOption[] = [
+  {
+    text: "",
+    point: 1,
+    accurate_label: "",
+    not_accurate_label: "",
+    accurate: false,
+    not_accurate: false,
+  },
+];
+
+const cloneMC = (list: MCOption[]): MCOption[] => list.map((o) => ({ ...o }));
+const cloneCat = (list: CategorizedOption[]): CategorizedOption[] =>
+  list.map((o) => ({ ...o }));
 
 export default function QuestionsForm({
   categories,
@@ -117,7 +154,16 @@ export default function QuestionsForm({
   ]);
   const [optionsCategorized, setOptionsCategorized] = useState<
     CategorizedOption[]
-  >([{ text: "", point: 1, accurate: false, not_accurate: false }]);
+  >([
+    {
+      text: "",
+      point: 1,
+      accurate: false,
+      not_accurate: false,
+      accurate_label: "",
+      not_accurate_label: "",
+    },
+  ]);
 
   // ===== Mutations =====
   const [createQuestion, { isLoading: creating }] = useCreateQuestionMutation();
@@ -125,16 +171,43 @@ export default function QuestionsForm({
   const [uploadFile] = useServiceUploadMutation();
   const submitting = creating || updating;
 
+  const [hydrated, setHydrated] = useState(false);
+
   // ===== Hydrate (edit) =====
   useEffect(() => {
-    if (!initial) return;
+    if (!initial || hydrated) return;
+
     setCategoryId(initial.question_category_id ?? defaultCategoryId ?? null);
     setQuestion(initial.question ?? "");
     setType(initial.type as QuestionType);
     setAnswer(initial.answer ?? "");
     setTotalPoint(initial.total_point ?? 5);
-    // kalau backend kirim options & explanation, isi di sini juga
-  }, [initial, defaultCategoryId]);
+    setExplanation(initial.explanation ?? "");
+
+    const rawOptions = (initial as unknown as { options?: unknown }).options;
+
+    if (Array.isArray(rawOptions)) {
+      if (initial.type === "multiple_choice") {
+        const cast = rawOptions as MCOption[];
+        setOptionsMC(cast.length ? cloneMC(cast) : cloneMC(DEFAULT_OPTIONS_MC));
+      } else if (initial.type === "true_false") {
+        const cast = rawOptions as MCOption[];
+        setOptionsTF(cast.length ? cloneMC(cast) : cloneMC(DEFAULT_OPTIONS_TF));
+      } else if (initial.type === "multiple_choice_multiple_answer") {
+        const cast = rawOptions as MCOption[];
+        setOptionsMCMulti(
+          cast.length ? cloneMC(cast) : cloneMC(DEFAULT_OPTIONS_MULTI)
+        );
+      } else if (initial.type === "multiple_choice_multiple_category") {
+        const cast = rawOptions as CategorizedOption[];
+        setOptionsCategorized(
+          cast.length ? cloneCat(cast) : cloneCat(DEFAULT_OPTIONS_CATEGORIZED)
+        );
+      }
+    }
+
+    setHydrated(true);
+  }, [initial, defaultCategoryId, hydrated]);
 
   // ===== Upload handler untuk SunEditor (3 argumen, return false) =====
   const handleSunUpload = useCallback(
@@ -151,7 +224,7 @@ export default function QuestionsForm({
         uploadHandler({ errorMessage: "File tidak ditemukan" });
         return false;
       }
-      
+
       // upload ke API kamu
       uploadFile(buildServiceUploadFormData({ file }))
         .unwrap()
@@ -161,10 +234,7 @@ export default function QuestionsForm({
 
           if (!url) {
             // TAMBAHAN: Log untuk debugging
-            console.error(
-              "Gagal extract URL dari respon API. Respon:",
-              res
-            );
+            console.error("Gagal extract URL dari respon API. Respon:", res);
             uploadHandler({
               errorMessage:
                 "Upload berhasil tapi URL tidak ditemukan di response API. Cek console.",
@@ -594,7 +664,14 @@ export default function QuestionsForm({
               onClick={() =>
                 setOptionsCategorized([
                   ...optionsCategorized,
-                  { text: "", point: 1, accurate: false, not_accurate: false },
+                  {
+                    text: "",
+                    point: 1,
+                    accurate: false,
+                    not_accurate: false,
+                    accurate_label: "",
+                    not_accurate_label: "",
+                  },
                 ])
               }
             >

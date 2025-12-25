@@ -133,8 +133,6 @@ export default function QuestionsPage() {
       paginate: 10,
       search: query,
       question_category_id: categoryId || undefined,
-      orderBy: "questions.updated_at",
-      order: "asc",
     },
     {
       refetchOnMountOrArgChange: true,

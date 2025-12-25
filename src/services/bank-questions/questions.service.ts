@@ -18,6 +18,8 @@ export interface MCOption {
 
 export interface CategorizedOption {
   text: string; // HTML allowed
+  accurate_label: string;
+  not_accurate_label: string;
   point: number;
   accurate: boolean;
   not_accurate: boolean;
@@ -95,7 +97,7 @@ export type QuestionImportPayload = {
 
 /** URL template CSV bawaan dari requirement */
 export const QUESTION_IMPORT_TEMPLATE_URL =
-  "https://api-cbt.naditechno.id/question-import.csv";
+  "https://api.cbt-stikesnotokusumo.com/question-import.csv";
 
 /** ===== API ===== */
 export const questionsApi = apiSlice.injectEndpoints({
